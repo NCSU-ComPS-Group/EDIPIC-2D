@@ -3173,11 +3173,15 @@ SUBROUTINE DISTRIBUTE_PARTICLES
   REAL(8) factor_convert
   REAL(8) vx_drift, vy_drift, vz_drift, v
 
-  INTEGER k, n, s, pos
-  INTEGER sum_Ni
+  INTEGER k, n, s, pos, s_neg
+  INTEGER sum_Ni, sum_Ni_expected
+  REAL(8) sum_Ni_expected_denom
+  REAL(8), ALLOCATABLE :: x_pos_list(:), y_pos_list(:)
 
 ! functions
   REAL(8) Bx, By, Bz, Ez
+
+  LOGICAL internal
 
   IF (Rank_cluster.EQ.0) THEN
 
@@ -3283,9 +3287,18 @@ SUBROUTINE DISTRIBUTE_PARTICLES
      END DO
 
 ! ions
+
+! in order to accomodate negative ions, we need to make sure we initialize charge neutral
+     sum_Ni_expected = N_electrons 
+     sum_Ni_expected_denom = 0.0
+     DO s = 1, N_spec
+        sum_Ni_expected_denom = sum_Ni_expected_denom + DBLE(Qs(s)) * init_NiNe(s)
+     END DO
+     sum_Ni_expected = INT(DBLE(N_electrons) / DBLE(sum_Ni_expected_denom))
+
      sum_Ni = 0
      DO s = 1, N_spec-1
-        N_ions(s) = INT(DBLE(N_electrons) * init_NiNe(s))
+        N_ions(s) = INT(DBLE(sum_Ni_expected) * init_NiNe(s))
         sum_Ni = sum_Ni + N_ions(s)
         PRINT '(2x,"Master process ",i3," : ",i8," macroparticles of ion species ",i3)', Rank_of_process, N_ions(s), s
         max_N_ions(s) = N_ions(s)+50
@@ -3293,7 +3306,7 @@ SUBROUTINE DISTRIBUTE_PARTICLES
 
 ! process the last ion species separately to make sure that the total number of electrons and ions is the same
      s = N_spec
-     N_ions(s) = N_electrons - sum_Ni
+     N_ions(s) = sum_Ni_expected - sum_Ni
      PRINT '(2x,"Master process ",i3," : ",i8," macroparticles of ion species ",i3)', Rank_of_process, N_ions(s), s
      max_N_ions(s) = N_ions(s)+50
 
@@ -3302,17 +3315,62 @@ SUBROUTINE DISTRIBUTE_PARTICLES
         ALLOCATE(ion(s)%part(1:max_N_ions(s)), STAT = ALLOC_ERR)
      END DO
 
-     pos = 0
+
+! initialize ion position - positive and negative ion positions should match.
+! first we initialize negative ion poitions randomly, then place positive ions on top
      DO s = 1, N_spec
-! since electrons are distributed randomly and are not ordered, we simply use their coordinates
+        k = 0
+        IF (Qs(s).LT.0.) THEN
+          DO WHILE (k.LE.N_ions(s))
+            ion(s)%part(k)%X = MAX(c_X_area_min, MIN(c_X_area_max, x_limit_left + (x_limit_right - x_limit_left) * well_random_number()))
+            ion(s)%part(k)%Y = MAX(c_Y_area_min, MIN(c_Y_area_max, y_limit_bot + (y_limit_top - y_limit_bot) * well_random_number()))
 
-        factor_convert = SQRT(init_Ti_eV(s) / T_e_eV) / (N_max_vel * SQRT(Ms(s)))
+! if it's in an internal object, try again
+            internal = .FALSE. 
+            DO n = N_of_boundary_objects+1, N_of_boundary_and_inner_objects
+              IF (((ion(s)%part(k)%X.LE.whole_object(n)%Xmin).AND.(ion(s)%part(k)%X.GE.whole_object(n)%Xmax)).AND. &
+               & ((ion(s)%part(k)%Y.LE.whole_object(n)%Ymin).AND.(ion(s)%part(k)%Y.GE.whole_object(n)%Ymax))) internal = .TRUE.
+            END DO
+            IF (internal.EQ..FALSE.) k = k+1 
+          END DO
+        END IF
+     END DO
 
+! negative particles are distributed randomly and are not ordered, we simply use their coordinates for positive ions
+! first collect all positions of negative particles in temporary arrays
+     ALLOCATE(x_pos_list(1:N_electrons+SUM(N_ions)), STAT=ALLOC_ERR)
+	 ALLOCATE(y_pos_list(1:N_electrons+SUM(N_ions)), STAT=ALLOC_ERR)
+	 pos = 0
+     DO k = 1, N_electrons
+	    pos = pos + 1
+	    x_pos_list(pos) = electron(k)%X
+        y_pos_list(pos) = electron(k)%y
+     END DO
+     DO s = 1, N_spec
         DO k = 1, N_ions(s)
-           pos = pos+1
-           ion(s)%part(k)%X = electron(pos)%X
-           ion(s)%part(k)%Y = electron(pos)%Y
+           IF (Qs(s).LT.0) THEN
+              pos = pos + 1
+              x_pos_list(pos) = ion(s)%part(k)%X
+			  y_pos_list(pos) = ion(s)%part(k)%y
+	       END IF
+		END DO
+     END DO
+	 
+	 pos = 0
+     DO s = 1, N_spec
+        DO k = 1, N_ions(s)
+           IF (Qs(s).GT.0) THEN
+             pos = pos + 1
+             ion(s)%part(k)%X = x_pos_list(pos)
+             ion(s)%part(k)%Y = y_pos_list(pos)
+           END IF
+        END DO
+      END DO
 
+! initialize ion velocities
+     DO s = 1, N_spec
+        factor_convert = SQRT(init_Ti_eV(s) / T_e_eV) / (N_max_vel * SQRT(Ms(s)))
+        DO k = 1, N_ions(s)
            CALL GetMaxwellVelocity(v)
            ion(s)%part(k)%VX = v * factor_convert
 
