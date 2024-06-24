@@ -148,15 +148,17 @@ SUBROUTINE INITIATE_ELECTRON_NEUTRAL_COLLISIONS
 ! 20 = inelastic
 !   21, 22, 23, etc.
 ! 30 = ionization, ion+ and e-
-! 40 = ionization, ion++ and e- e-
-! etc, we do the 3 first types only, though allow multiple inelastic collisions
+! 40 = ionization, ion++ and e-
+! 50 = attachment, ion- 
+! etc
 
 ! init_neutral_Xenon-.dat
 ! cross sections
 ! init_neutral_Xenon-_crsect_colltype_10.dat
 ! init_neutral_Xenon-_crsect_colltype_20.dat
+! init_neutral_Xenon-_crsect_colltype_21.dat
 ! init_neutral_Xenon-_crsect_colltype_30.dat
-! init_neutral_Xenon-_crsect_colltype_40.dat etc
+! init_neutral_Oxyge-_crsect_colltype_50.dat etc
 ! 
 
 ! for each neutral species included, for each activated collisional process, read cross sections
@@ -191,7 +193,7 @@ SUBROUTINE INITIATE_ELECTRON_NEUTRAL_COLLISIONS
         END DO
         CLOSE (9, STATUS = 'KEEP')
 
-! set thresholds for inelastic/ionization collisions
+! set thresholds for inelastic/ionization/attachement collisions
         neutral(n)%en_colproc(p)%threshold_energy_eV = 0.0_8   ! for elastic collisions
         IF (neutral(n)%en_colproc(p)%type.GE.20) neutral(n)%en_colproc(p)%threshold_energy_eV = neutral(n)%en_colproc(p)%energy_eV(1)
 
@@ -526,7 +528,12 @@ SUBROUTINE PERFORM_ELECTRON_NEUTRAL_COLLISIONS
                                           & collision_e_neutral(n)%colproc_info(indx_coll)%ion_species_produced, &
                                           & collision_e_neutral(n)%colproc_info(indx_coll)%ion_velocity_factor, &
                                           & collision_e_neutral(n)%counter(indx_coll) )
-
+        CASE (50)
+           CALL en_Collision_Attachment_50( n, random_j, energy_eV, &
+                                          & collision_e_neutral(n)%colproc_info(indx_coll)%threshold_energy_eV, &
+                                          & collision_e_neutral(n)%colproc_info(indx_coll)%ion_species_produced, &
+                                          & collision_e_neutral(n)%colproc_info(indx_coll)%ion_velocity_factor, &
+                                          & collision_e_neutral(n)%counter(indx_coll) )
         END SELECT
 
      END DO   !###   DO j = 0, I_collided

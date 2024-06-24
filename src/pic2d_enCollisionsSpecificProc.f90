@@ -638,3 +638,86 @@ SUBROUTINE en_Collision_Ionization_30(indx_neutral, indx_particle, energy_inc_eV
 
 END SUBROUTINE en_Collision_Ionization_30
 !=====================================================================================================
+SUBROUTINE en_Collision_Attachment_50(indx_neutral, indx_particle, energy_inc_eV, threshold_energy_eV, ion_species_produced, ion_velocity_factor, counter)
+
+!  USE MCCollisions
+  USE ElectronParticles
+  USE SetupValues, ONLY : factor_convert_vion_i
+!???  USE CurrentProblemValues
+!  USE ParallelOperationValues
+!???  USE Diagnostics, ONLY : Rate_energy_coll
+!???  USE ElectronInjection, ONLY : UseSmartTagsFlag
+
+  USE rng_wrapper
+
+  IMPLICIT NONE
+
+  INTEGER indx_neutral          ! ordering number of neutral species
+  INTEGER indx_particle         ! ordering number of particle 
+  REAL(8) energy_inc_eV         ! particle energy [eV]
+  REAL(8) threshold_energy_eV   ! threshold energy for the collision to occur [eV]
+  INTEGER ion_species_produced  ! index of NEGATIVE ion species produced (1<N_spec)
+  REAL(8) ion_velocity_factor   ! factor to get ion velocity, dependes on specific neutral temperature
+  INTEGER counter               ! counter of collisions
+
+  REAL(8) V, V_xy, a, b            
+
+  REAL(8) Vx, Vy, Vz          ! velocity components of incident electron, before scattering
+  REAL(8) Vx_i, Vy_i, Vz_i    ! velocity components of produced ion
+
+  REAL(8) alpha            
+
+  REAL(8)   R                ! random number             
+
+  REAL(8) energy_change_e    ! change of kinetic energy of electrons, incident and ejected
+  REAL(8) energy_change_i    ! change of kinetic energy due to produced ion
+
+  INTEGER left_node, right_node
+
+!print *, 'ionization'
+
+!  IF (energy_inc_eV.LE.Thresh_en_ioniz_eV) THEN 
+!     PRINT '(/2x,"Process ",i3," : Potential ERROR in CollideElectron_3 (ionization e-n collision):")', Rank_of_process
+!     PRINT  '(2x,"Particle energy ",f10.3,"(eV) is not more than the ionization threshold ",f6.2,"(eV)")',&
+!                                                                    & energy_inc_eV, Thresh_en_ioniz_eV
+!     PRINT  '(2x,"Such low energy particle cannot take part in this kind of collisions")'
+!     PRINT  '(2x,"******* ******* THIS COLLISION EVENT WILL BE SKIPPED ******* *******")'
+!     e_n_3_count = e_n_3_count - 1
+!     RETURN
+!!     PRINT  '(2x,"The program will be terminated now :(")'
+!!     STOP
+!  END IF
+
+!  IF (energy_inc_eV.LT.(Thresh_en_ioniz_eV+1.0d-6)) THEN 
+  IF (energy_inc_eV.LE.threshold_energy_eV) THEN 
+!     e_n_3_count = e_n_3_count - 1
+     RETURN
+  END IF
+
+! Remove electron particle
+  CALL REMOVE_ELECTRON(indx_particle)
+
+! Calculate initial ion velocity
+  CALL GetMaxwellVelocity(Vx_i) 
+  CALL GetMaxwellVelocity(Vy_i) 
+  CALL GetMaxwellVelocity(Vz_i) 
+
+! Use the factor above to obtain the dim-less velocity (V * N_box_vel / V_te) of the produced ion
+  Vx_i = Vx_i * ion_velocity_factor !factor_convert_vion_i(ion_species_produced)  !alpha_Vscl
+  Vy_i = Vy_i * ion_velocity_factor !factor_convert_vion_i(ion_species_produced)  !alpha_Vscl
+  Vz_i = Vz_i * ion_velocity_factor !factor_convert_vion_i(ion_species_produced)  !alpha_Vscl
+
+!print *, "en_Collision_Attachement_40 :: before ADD_ION_TO_ADD_LIST"
+
+  CALL ADD_ION_TO_ADD_LIST(ion_species_produced, electron(indx_particle)%X, electron(indx_particle)%Y, Vx_i, Vy_i, Vz_i, 0)   ! tag=0
+!??? diagnostics
+!print *, "en_Collision_Attachement_40 :: after ADD_ION_TO_ADD_LIST"
+
+  counter = counter + 1
+
+!??? calculate and save the change of energy for ion
+!  energy_change_i = Vx_i*Vx_i + Vy_i*Vy_i + Vz_i*Vz_i        
+!  Rate_energy_coll(2) = Rate_energy_coll(2) + energy_change_i
+
+END SUBROUTINE en_Collision_Attachment_50
+!=====================================================================================================
