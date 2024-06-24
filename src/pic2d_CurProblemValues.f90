@@ -3170,6 +3170,7 @@ SUBROUTINE DISTRIBUTE_PARTICLES
   REAL(8) myBx_T, myBy_T, myBz_T, myB2
 
   INTEGER ALLOC_ERR
+  INTEGER errcode,ierr
   REAL(8) factor_convert
   REAL(8) vx_drift, vy_drift, vz_drift, v
 
@@ -3301,6 +3302,11 @@ SUBROUTINE DISTRIBUTE_PARTICLES
         N_ions(s) = INT(DBLE(sum_Ni_expected) * init_NiNe(s))
         sum_Ni = sum_Ni + N_ions(s)
         PRINT '(2x,"Master process ",i3," : ",i8," macroparticles of ion species ",i3)', Rank_of_process, N_ions(s), s
+        IF (N_ions(s).LT.0) THEN
+           PRINT '("ERROR: Negative particle count requried for charge neutrality. , Master process ",i3," : ",i8," macroparticles of ion species ",i3)', Rank_of_process, N_ions(s), s
+           errcode=156
+           CALL MPI_ABORT(MPI_COMM_WORLD,errcode,ierr)
+        END IF
         max_N_ions(s) = N_ions(s)+50
      END DO
 
